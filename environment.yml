@@ -1,0 +1,13 @@
+name: ensemble
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - git-lfs
+  - pip:
+    - torch>=1.12
+    - easydict
+    - tqdm
+    - functorch
