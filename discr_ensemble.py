@@ -76,7 +76,10 @@ class DiscriminatorEnsemble(nn.Module):
         for idx, module_class in enumerate(discr_class):
 
             for _ in range(multiplier):
-                self.discriminators.append(module_class(config[idx], *args, **kwargs))
+                if config[idx] is None: #StudioGAN
+                    self.discriminators.append(module_class(*args, **kwargs))
+                else:
+                    self.discriminators.append(module_class(config[idx], *args, **kwargs))
 
             #code for vectorized group
             #if multiplier>1:
@@ -92,13 +95,17 @@ class DiscriminatorEnsemble(nn.Module):
     def forward_single(self, x, idx):
         return self.discriminators[idx](x)
 
-    def forward(self, x):
+    def forward(self, x, *args, **kwargs):
         """Neural Network Forward Propagation with equal loss weighting."""
         x = self.split_and_weight(x)
         if self.apply_soft_weighting:
             discr_out = torch.zeros([x.shape[1], self.n_of_discr])  # Batch X Discr
             x = soft_weighting_autograd(x, self.lambda_var, discr_out)
-        x = torch.concat([discr(x[idx]) for (idx, discr) in enumerate(self.discriminators)], dim=-1)
+        if args is not None: #StudioGAN
+            result_dicts = [discr(x[idx],*args, **kwargs) for (idx, discr) in enumerate(self.discriminators)]
+            x = torch.concat([result["adv_output"] for result in result_dicts], dim=-1)
+        else:
+            x = torch.concat([discr(x[idx],*args, **kwargs) for (idx, discr) in enumerate(self.discriminators)], dim=-1)
 
         if self.apply_soft_weighting:
             # manipulate discr_out Tensor that is used for soft-weighting during Backpropagation:
@@ -109,4 +116,11 @@ class DiscriminatorEnsemble(nn.Module):
 
         if not self.training:  # evaluation mode -> single output
             x = reduce_output(x)
+
+        if args is not None: #StudioGAN
+            labels = torch.concat([result["label"] for result in result_dicts], dim=-1)
+            #Debug_
+            if x.shape[0] != labels.shape[0]:
+                warnings.warn("Label shape does not equal output shape")
+            x = {"adv_output": x, "label": labels}
         return x
