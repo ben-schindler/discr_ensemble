@@ -110,13 +110,29 @@ class weight_by_predicts(torch.autograd.Function):
         tensor_grad = tensor_grad * w.movedim(0, -1).view([no_of_discr, -1] + [1] * feature_dims)
         return tensor_grad, None, None
 
+class weight_fixed(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, tensor, weights):
+        if weights.shape[0] != tensor.shape[0]:
+            raise ValueError('Number of weightings must equal the number of discriminators.')
+        ctx.weights = weights
+        return tensor
+
+    @staticmethod
+    def backward(ctx, tensor_grad):
+        n_of_discr = tensor_grad.shape[0]
+        w = ctx.weights
+        view_shape = [-1] + [1] * (tensor_grad.dim() - 1)
+        tensor_grad = tensor_grad * w.view(view_shape)
+        return tensor_grad, None
 
 def reduce_output(x):
     return reduce_output_function.apply(x)
 
-def get_gradient_weighting(weighting: str):
-    if weighting not in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli"]:
-        raise ValueError('Weighting must be in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli"].')
+def get_gradient_weighting(weighting: str, fixed_weights=None):
+    if weighting not in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed"]:
+        raise ValueError('Weighting must be in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed"].')
     if weighting == "ew":
         return lambda x: x
     if weighting == "rand_uniform":
@@ -127,6 +143,12 @@ def get_gradient_weighting(weighting: str):
         return lambda x: weight_rand_bernoulli.apply(x)
     if weighting == "soft":
         return lambda x, lambda_var, discr_outputs: weight_by_predicts.apply(x, lambda_var, discr_outputs)
+    if weighting == "fixed":
+        if not isinstance(fixed_weights, list) or not all(isinstance(w, float) for w in fixed_weights):
+            raise ValueError('Fixed Weighting must be a list of floats (e.g. ([0.30, 0.30, 0,40])).')
+        else:
+            fixed_weights = torch.tensor(fixed_weights)
+            return lambda x: weight_fixed.apply(x, fixed_weights)
 
 
 '''

@@ -19,8 +19,8 @@ from easydict import EasyDict as edict
 from ensemble_utils import reduce_output, get_gradient_weighting
 
 
-from functorch import combine_state_for_ensemble
-from functorch import vmap
+#from functorch import combine_state_for_ensemble
+#from functorch import vmap
 
 '''
 class DiscriminatorGroup(nn.Module):
@@ -51,7 +51,7 @@ class DiscriminatorEnsemble(nn.Module):
     """
 
     def __init__(self, discr_class: Union[type, list[type]], config: Union[dict, list] = None, multiplier: int = 1,
-                 weighting: str = 'ew', lambda_var=1, isStudioGAN=False, *args, **kwargs):
+                 weighting: str = 'ew', lambda_var=1, fixed_weights=None, split_batch=False, isStudioGAN=False, *args, **kwargs):
         super().__init__()
         self.isStudioGAN = isStudioGAN
 
@@ -66,25 +66,35 @@ class DiscriminatorEnsemble(nn.Module):
         if config is not None and len(discr_class) != len(config):
             raise ValueError("Number of given discr_classes must equal the number of configs")
 
-        if weighting not in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli"]:
-            raise ValueError('Weighting must be in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli"].')
+        if weighting not in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed"]:
+            raise ValueError('Weighting must be in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed"]')
+
+        if weighting == "fixed":
+            if not isinstance(fixed_weights, list) or not all(isinstance(w, float) for w in fixed_weights):
+                raise ValueError('Fixed Weighting must be a list of floats (e.g. ([0.30, 0.30, 0,40])).')
 
         self.n_of_groups = len(discr_class)
         self.group_size = multiplier
         self.n_of_discr = len(discr_class) * multiplier
         self.lambda_var = torch.tensor(lambda_var)
         self.weighting_method = weighting
-        self.weight = get_gradient_weighting(weighting)
+        self.weight = get_gradient_weighting(weighting, fixed_weights=fixed_weights)
+        self.split_batch = split_batch
 
         self.discriminators = nn.ModuleList()
 
         for idx, module_class in enumerate(discr_class):
 
-            for _ in range(multiplier):
+            for disc_idx in range(multiplier):
                 if self.isStudioGAN: # -> don't use config, but pass arguments directly
-                    self.discriminators.append(module_class(*args, **kwargs))
+                    discr = module_class(*args, **kwargs)
                 else:
-                    self.discriminators.append(module_class(config[idx], *args, **kwargs))
+                    discr = module_class(config[idx], *args, **kwargs)
+                if self.split_batch:
+                    discr = nn.Sequential(
+                        BatchSplitter(no_of_heads=self.n_of_discr, head_idx=disc_idx),
+                        discr)
+                self.discriminators.append(discr)
 
 
     def forward_single(self, x, idx, *args, **kwargs):
@@ -94,6 +104,7 @@ class DiscriminatorEnsemble(nn.Module):
         """Neural Network Forward Propagation with equal loss weighting."""
         # gradient weighting only in case of an attached generator:
         gen_attached = not x.is_leaf
+
         # split to discriminators:
         feature_dims = x.dim()
         x = x.expand([self.n_of_discr] + [-1] * feature_dims)
@@ -135,7 +146,29 @@ class DiscriminatorEnsemble(nn.Module):
             x = {"adv_output": x, "label": labels}
         return x
 
+class BatchSplitter(nn.Module):
+    """
+        This Modules implements Batch Splitting in accordance to DropoutGAN.
+        Batch is equally splittet by the total number of heads.
+        Depending on the head-index, a different part of the data is provided to the subsequent module.
+    """
 
+    def __init__(self, no_of_heads, head_idx):
+        '''
+        no_of_heads: total number of heads (discriminators)
+        no_of_heads: index of this head (discriminators)
+        '''
+        super().__init__()
+        self.no_of_heads = no_of_heads
+        self.head_idx = head_idx
+
+    def forward(self, x, *args, **kwargs):
+        if self.training:
+            if x.shape[0] % self.no_of_heads != 0:
+                raise ValueError("Batch size must be divisible by the number of heads")
+            x = x.view(self.no_of_heads, -1, *x.shape[1:])[self.head_idx]
+
+        return x
 '''
 class DiscriminatorEnsemble_old(nn.Module):
     """
