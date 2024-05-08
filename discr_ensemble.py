@@ -91,7 +91,7 @@ class DiscriminatorEnsemble(nn.Module):
                 else:
                     discr = module_class(config[idx], *args, **kwargs)
                 if self.split_batch:
-                    discr = nn.Sequential(
+                    discr = mySequential(
                         BatchSplitter(no_of_heads=self.n_of_discr, head_idx=disc_idx),
                         discr)
                 self.discriminators.append(discr)
@@ -162,13 +162,38 @@ class BatchSplitter(nn.Module):
         self.no_of_heads = no_of_heads
         self.head_idx = head_idx
 
-    def forward(self, x, *args, **kwargs):
+    def forward(self, x, labels=None, *args, **kwargs):
         if self.training:
             if x.shape[0] % self.no_of_heads != 0:
                 raise ValueError("Batch size must be divisible by the number of heads")
             x = x.view(self.no_of_heads, -1, *x.shape[1:])[self.head_idx]
 
-        return x
+            if labels is None:
+                out = x, *args, *kwargs
+            else:
+                if labels.shape[0] % self.no_of_heads != 0:
+                    raise ValueError("Number of labels must be divisible by the number of heads")
+                labels = labels.view(self.no_of_heads, -1, *labels.shape[1:])[self.head_idx]
+                out = x, labels, *args, *kwargs
+        else:
+            out = x
+
+        return out
+
+class mySequential(nn.Sequential):
+    def forward(self, *inputs, **kwargs):
+        for module in self._modules.values():
+            if type(inputs) == tuple:
+                if len(kwargs) > 0:
+                    inputs = module(*inputs, **kwargs)
+                else:
+                    inputs = module(*inputs)
+            else:
+                if len(kwargs) > 0:
+                    inputs = module(inputs, **kwargs)
+                else:
+                    inputs = module(inputs)
+        return inputs
 '''
 class DiscriminatorEnsemble_old(nn.Module):
     """
