@@ -78,7 +78,8 @@ class DiscriminatorEnsemble(nn.Module):
         self.n_of_discr = len(discr_class) * multiplier
         self.lambda_var = torch.tensor(lambda_var)
         self.weighting_method = weighting
-        self.weight = get_gradient_weighting(weighting, fixed_weights=fixed_weights)
+        self.fixed_weights = fixed_weights
+        self.weight = get_gradient_weighting(weighting, fixed_weights=self.fixed_weights)
         self.split_batch = split_batch
 
         self.discriminators = nn.ModuleList()
@@ -113,7 +114,7 @@ class DiscriminatorEnsemble(nn.Module):
         if self.weighting_method == "soft" and gen_attached:
             # allocate tensor for discriminator predicts:
             discr_out = torch.zeros([x.shape[1], self.n_of_discr], device=x.device)  # Batch X Discr
-            x = self.weight(x, self.lambda_var, discr_out)
+            x = self.weight(x, self.lambda_var, discr_out.detach())
         elif gen_attached:
             x = self.weight(x)
 
@@ -127,9 +128,10 @@ class DiscriminatorEnsemble(nn.Module):
         # inplace update of discriminator predicts, needed for soft-weighting during Backpropagation:
         if self.weighting_method == "soft" and gen_attached:
             # adapt predicts in case of paccing (Pac-GAN):
-            pac_size = discr_out.shape[0] // x.shape[0]
-            unpacked_x = torch.repeat_interleave(x, pac_size, dim=0)
-            discr_out.add_(unpacked_x)
+            with torch.no_grad:
+                pac_size = discr_out.shape[0] // x.shape[0]
+                unpacked_x = torch.repeat_interleave(x, pac_size, dim=0)
+                discr_out.add_(unpacked_x)
 
         # evaluation mode -> reduce predictions to single output:
         if not self.training:
@@ -168,15 +170,15 @@ class BatchSplitter(nn.Module):
                 raise ValueError("Batch size must be divisible by the number of heads")
             x = x.view(self.no_of_heads, -1, *x.shape[1:])[self.head_idx]
 
-            if labels is None:
-                out = x, *args, *kwargs
-            else:
+            if labels is not None:
                 if labels.shape[0] % self.no_of_heads != 0:
                     raise ValueError("Number of labels must be divisible by the number of heads")
                 labels = labels.view(self.no_of_heads, -1, *labels.shape[1:])[self.head_idx]
-                out = x, labels, *args, *kwargs
+
+        if labels is None:
+            out = x, *args, *kwargs
         else:
-            out = x
+            out = x, labels, *args, *kwargs
 
         return out
 
