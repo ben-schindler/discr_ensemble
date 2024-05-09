@@ -116,7 +116,7 @@ class weight_fixed(torch.autograd.Function):
     def forward(ctx, tensor, weights):
         if weights.shape[0] != tensor.shape[0]:
             raise ValueError('Number of weightings must equal the number of discriminators.')
-        ctx.weights = weights
+        ctx.weights = weights.to(tensor.device)
         return tensor
 
     @staticmethod

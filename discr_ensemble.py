@@ -114,7 +114,7 @@ class DiscriminatorEnsemble(nn.Module):
         if self.weighting_method == "soft" and gen_attached:
             # allocate tensor for discriminator predicts:
             discr_out = torch.zeros([x.shape[1], self.n_of_discr], device=x.device)  # Batch X Discr
-            x = self.weight(x, self.lambda_var, discr_out.detach())
+            x = self.weight(x, self.lambda_var, discr_out) #debug detach()
         elif gen_attached:
             x = self.weight(x)
 
@@ -128,7 +128,7 @@ class DiscriminatorEnsemble(nn.Module):
         # inplace update of discriminator predicts, needed for soft-weighting during Backpropagation:
         if self.weighting_method == "soft" and gen_attached:
             # adapt predicts in case of paccing (Pac-GAN):
-            with torch.no_grad:
+            with torch.no_grad():
                 pac_size = discr_out.shape[0] // x.shape[0]
                 unpacked_x = torch.repeat_interleave(x, pac_size, dim=0)
                 discr_out.add_(unpacked_x)
