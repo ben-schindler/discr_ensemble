@@ -129,7 +129,7 @@ class weight_by_predict_logits(torch.autograd.Function):
             raise RuntimeError("Tensor of discr_output have to be changed exactly one (at the end of forward path)")
         feature_dims = tensor_grad.dim() - 2
         no_of_discr = ctx.discr_outputs.shape[1]
-        w = F.softmax(-F.sigmoid(discr_outputs) * ctx.lambda_var, dim=1)
+        w = F.softmax(-F.sigmoid(ctx.discr_outputs) * ctx.lambda_var, dim=1)
         tensor_grad = tensor_grad * w.movedim(0, -1).view([no_of_discr, -1] + [1] * feature_dims)
         return tensor_grad, None, None
 
