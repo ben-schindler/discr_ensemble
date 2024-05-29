@@ -68,7 +68,7 @@ class DiscriminatorEnsemble(nn.Module):
         if config is not None and len(discr_class) != len(config):
             raise ValueError("Number of given discr_classes must equal the number of configs")
 
-        if weighting not in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed", "soft_logit"]:
+        if weighting not in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed", "soft_logits"]:
             raise ValueError('Weighting must be in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed", "soft_logits"].')
 
         if weighting == "fixed":
