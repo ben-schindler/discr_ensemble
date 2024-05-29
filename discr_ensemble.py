@@ -13,10 +13,11 @@ import torchinfo
 import json
 import copy
 import warnings
+import itertools
 from typing import Union
 from easydict import EasyDict as edict
 
-from ensemble_utils import reduce_output, get_gradient_weighting
+from ensemble_utils import reduce_output, get_gradient_weighting, gradient_normalization
 
 
 #from functorch import combine_state_for_ensemble
@@ -43,7 +44,7 @@ class DiscriminatorGroup(nn.Module):
 
 class DiscriminatorEnsemble(nn.Module):
     """
-    Discriminator MLP-Discriminator.
+    Discriminator Ensemble.
 
     This implements a
     config-arguments:
@@ -51,7 +52,8 @@ class DiscriminatorEnsemble(nn.Module):
     """
 
     def __init__(self, discr_class: Union[type, list[type]], config: Union[dict, list] = None, multiplier: int = 1,
-                 weighting: str = 'ew', lambda_var=1, fixed_weights=None, split_batch=False, isStudioGAN=False, *args, **kwargs):
+                 weighting: str = 'ew', lambda_var=1, fixed_weights=None, split_batch=False, isStudioGAN=False,
+                 grad_norm=False, *args, **kwargs):
         super().__init__()
         self.isStudioGAN = isStudioGAN
 
@@ -66,8 +68,8 @@ class DiscriminatorEnsemble(nn.Module):
         if config is not None and len(discr_class) != len(config):
             raise ValueError("Number of given discr_classes must equal the number of configs")
 
-        if weighting not in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed"]:
-            raise ValueError('Weighting must be in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed"]')
+        if weighting not in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed", "soft_logit"]:
+            raise ValueError('Weighting must be in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed", "soft_logits"].')
 
         if weighting == "fixed":
             if not isinstance(fixed_weights, list) or not all(isinstance(w, float) for w in fixed_weights):
@@ -81,6 +83,7 @@ class DiscriminatorEnsemble(nn.Module):
         self.fixed_weights = fixed_weights
         self.weight = get_gradient_weighting(weighting, fixed_weights=self.fixed_weights)
         self.split_batch = split_batch
+        self.grad_norm = grad_norm
 
         self.discriminators = nn.ModuleList()
 
@@ -92,7 +95,7 @@ class DiscriminatorEnsemble(nn.Module):
                 else:
                     discr = module_class(config[idx], *args, **kwargs)
                 if self.split_batch:
-                    discr = mySequential(
+                    discr = MySequential(
                         BatchSplitter(no_of_heads=self.n_of_discr, head_idx=disc_idx),
                         discr)
                 self.discriminators.append(discr)
@@ -114,9 +117,13 @@ class DiscriminatorEnsemble(nn.Module):
         if self.weighting_method == "soft" and gen_attached:
             # allocate tensor for discriminator predicts:
             discr_out = torch.zeros([x.shape[1], self.n_of_discr], device=x.device)  # Batch X Discr
-            x = self.weight(x, self.lambda_var, discr_out) #debug detach()
+            x = self.weight(x, self.lambda_var, discr_out)
         elif gen_attached:
             x = self.weight(x)
+
+        # apply gradient normalization:
+        if self.grad_norm:
+            x = gradient_normalization.apply(x)
 
         # forward through individual discriminators:
         if self.isStudioGAN:
@@ -175,14 +182,29 @@ class BatchSplitter(nn.Module):
                     raise ValueError("Number of labels must be divisible by the number of heads")
                 labels = labels.view(self.no_of_heads, -1, *labels.shape[1:])[self.head_idx]
 
-        if labels is None:
-            out = x, *args, *kwargs
-        else:
-            out = x, labels, *args, *kwargs
+        output = [x]
+        if labels is not None:
+            output.append(labels)
 
-        return out
+        return tuple(output)
 
-class mySequential(nn.Sequential):
+
+
+class MySequential(nn.Sequential):
+    """
+    A custom PyTorch module that extends nn.Sequential to handle tuples and single tensors as inputs, and supports
+    passing keyword arguments.
+    """
+    def forward(self, *inputs, **kwargs):
+        for module in self._modules.values():
+            if isinstance(inputs, tuple):
+                inputs = module(*inputs, **kwargs)
+            else:
+                inputs = module(inputs, **kwargs)
+        return inputs
+
+'''
+class mySequential_old(nn.Sequential):
     def forward(self, *inputs, **kwargs):
         for module in self._modules.values():
             if type(inputs) == tuple:
@@ -196,6 +218,8 @@ class mySequential(nn.Sequential):
                 else:
                     inputs = module(inputs)
         return inputs
+'''
+
 '''
 class DiscriminatorEnsemble_old(nn.Module):
     """

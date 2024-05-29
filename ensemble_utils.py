@@ -110,6 +110,29 @@ class weight_by_predicts(torch.autograd.Function):
         tensor_grad = tensor_grad * w.movedim(0, -1).view([no_of_discr, -1] + [1] * feature_dims)
         return tensor_grad, None, None
 
+class weight_by_predict_logits(torch.autograd.Function):
+    '''use this function instead of weight_by_predicts, when your discriminator outputs logits
+    instead of the vanilla [0,1]-Classification, '''
+
+    @staticmethod
+    def forward(ctx, tensor, lambda_var, discr_outputs):
+        """
+        Forward the
+        """
+        ctx.lambda_var = lambda_var
+        ctx.discr_outputs = discr_outputs
+        return tensor
+
+    @staticmethod
+    def backward(ctx, tensor_grad):
+        if ctx.discr_outputs._version != 1:
+            raise RuntimeError("Tensor of discr_output have to be changed exactly one (at the end of forward path)")
+        feature_dims = tensor_grad.dim() - 2
+        no_of_discr = ctx.discr_outputs.shape[1]
+        w = F.softmax(-F.sigmoid(discr_outputs) * ctx.lambda_var, dim=1)
+        tensor_grad = tensor_grad * w.movedim(0, -1).view([no_of_discr, -1] + [1] * feature_dims)
+        return tensor_grad, None, None
+
 class weight_fixed(torch.autograd.Function):
 
     @staticmethod
@@ -127,12 +150,26 @@ class weight_fixed(torch.autograd.Function):
         tensor_grad = tensor_grad * w.view(view_shape)
         return tensor_grad, None
 
+class gradient_normalization(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, tensor):
+        return tensor
+
+    @staticmethod
+    def backward(ctx, tensor_grad):
+        n_of_discr = tensor_grad.shape[0]
+        overall_mean = tensor_grad.flatten().abs().mean()
+        w = overall_mean / tensor_grad.flatten(1).abs().mean(dim=1)
+        view_shape = [-1] + [1] * (tensor_grad.dim() - 1)
+        tensor_grad = tensor_grad * w.view(view_shape)
+        return tensor_grad
+
 def reduce_output(x):
     return reduce_output_function.apply(x)
 
 def get_gradient_weighting(weighting: str, fixed_weights=None):
-    if weighting not in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed"]:
-        raise ValueError('Weighting must be in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed"].')
+    if weighting not in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed", "soft_logits"]:
+        raise ValueError('Weighting must be in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed", "soft_logits"].')
     if weighting == "ew":
         return lambda x: x
     if weighting == "rand_uniform":
@@ -143,6 +180,8 @@ def get_gradient_weighting(weighting: str, fixed_weights=None):
         return lambda x: weight_rand_bernoulli.apply(x)
     if weighting == "soft":
         return lambda x, lambda_var, discr_outputs: weight_by_predicts.apply(x, lambda_var, discr_outputs)
+    if weighting == "soft_logits":
+        return lambda x, lambda_var, discr_outputs: weight_by_predict_logits.apply(x, lambda_var, discr_outputs)
     if weighting == "fixed":
         if not isinstance(fixed_weights, list) or not all(isinstance(w, float) for w in fixed_weights):
             raise ValueError('Fixed Weighting must be a list of floats (e.g. ([0.30, 0.30, 0,40])).')
