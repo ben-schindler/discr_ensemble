@@ -45,6 +45,21 @@ class split_to_discriminators(torch.autograd.Function):
         """
         return tensor_grad.sum(dim=0), None
 
+
+class weight_equal(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, tensor):
+        return tensor
+
+    @staticmethod
+    def backward(ctx, tensor_grad):
+        #print("shape:\t", tensor_grad.shape)
+        #print("before:\t",tensor_grad.sum(dim=0).abs().mean())
+        n_of_discr = tensor_grad.shape[0]
+        tensor_grad = tensor_grad / n_of_discr
+        #print("after:\t", tensor_grad.sum(dim=0).abs().mean())
+        return tensor_grad
+
 class weight_rand_uniform(torch.autograd.Function):
     @staticmethod
     def forward(ctx, tensor):
@@ -79,14 +94,20 @@ class weight_rand_bernoulli(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, tensor_grad):
+        #print("shape:\t", tensor_grad.shape)
+        #print("before:\t",tensor_grad.sum(dim=0).abs().mean())
         n_of_discr = tensor_grad.shape[0]
         w = torch.bernoulli(torch.tensor([0.5], device=tensor_grad.device).repeat(n_of_discr))
+        #print("w:\t", w)
         if w.sum() == 0.:
             w[torch.randint(high=n_of_discr, size=[1])] = 1.
         else:
-            w.div(w.sum())
+            #Bernoulli 2:
+            w = w.div(w.sum())
+        #print("w_norm:\t", w)
         view_shape = [-1] + [1] * (tensor_grad.dim() - 1)
         tensor_grad = tensor_grad * w.view(view_shape)
+        #print("after:\t", tensor_grad.sum(dim=0).abs().mean())
         return tensor_grad
 
 class weight_by_predicts(torch.autograd.Function):
@@ -171,7 +192,7 @@ def get_gradient_weighting(weighting: str, fixed_weights=None):
     if weighting not in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed", "soft_logits"]:
         raise ValueError('Weighting must be in ["ew", "soft", "rand_uniform", "rand_normal", "rand_bernoulli", "fixed", "soft_logits"].')
     if weighting == "ew":
-        return lambda x: x
+        return lambda x: weight_equal.apply(x)
     if weighting == "rand_uniform":
         return lambda x: weight_rand_uniform.apply(x)
     if weighting == "rand_normal":
