@@ -178,7 +178,6 @@ class gradient_normalization(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, tensor_grad):
-        n_of_discr = tensor_grad.shape[0]
         overall_mean = tensor_grad.flatten().abs().mean()
         w = overall_mean / tensor_grad.flatten(1).abs().mean(dim=1)
         view_shape = [-1] + [1] * (tensor_grad.dim() - 1)
