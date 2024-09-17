@@ -62,7 +62,7 @@ class DiscriminatorEnsemble(nn.Module):
             discr_class = [discr_class]
 
         # convert config to a list if only one configuration is given:
-        if not isinstance(config, list):
+        if not isinstance(config, list) and config is not None:
             config = [config]
 
         if config is not None and len(discr_class) != len(config):
@@ -90,7 +90,7 @@ class DiscriminatorEnsemble(nn.Module):
         for idx, module_class in enumerate(discr_class):
 
             for disc_idx in range(multiplier):
-                if self.isStudioGAN: # -> don't use config, but pass arguments directly
+                if config is None: # -> don't use config, but pass arguments directly
                     discr = module_class(*args, **kwargs)
                 else:
                     discr = module_class(config[idx], *args, **kwargs)
