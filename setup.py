@@ -17,11 +17,10 @@ setup(
     packages=find_packages(),
     license="MIT",
     py_modules=["discriminator_ensemble", "ensemble_utils"],
-    install_requires=[
-        "torch",
-        "easydict",
-        "torchinfo",
-        "functorch"
-    ],
+    #install_requires=[
+    #    "torch",
+    #    "easydict",
+    #    "torchinfo",
+    #],
     dependency_links=[],
 )

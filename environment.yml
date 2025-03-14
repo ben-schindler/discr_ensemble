@@ -10,4 +10,4 @@ dependencies:
     - torch>=1.12
     - easydict
     - tqdm
-    - functorch
+    - numpy
