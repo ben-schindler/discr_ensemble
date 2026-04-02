@@ -20,13 +20,13 @@ dependencies:
   # ... your other dependencies
   - pip:
     # ... your other pip packages
-    - git+https://github.com/ben-schindler/discr_ensemble@master
+    - git+https://github.com/ben-schindler/discr_ensemble@main
 ```
 
 Or install directly with pip:
 
 ```bash
-pip install git+https://github.com/ben-schindler/discr_ensemble@master
+pip install git+https://github.com/ben-schindler/discr_ensemble@main
 ```
 
 ## Quick Start
