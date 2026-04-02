@@ -14,9 +14,9 @@ setup(
     url="https://github.com/ben-schindler/discr_ensemble",
     download_url = 'https://github.com/ben-schindler/discr_ensemble/archive/refs/tags/v0.1.tar.gz',
     author="Benjamin Schindler",
-    packages=find_packages(),
+    packages=[],
     license="MIT",
-    py_modules=["discriminator_ensemble", "ensemble_utils"],
+    py_modules=["discr_ensemble", "ensemble_utils"],
     #install_requires=[
     #    "torch",
     #    "easydict",
