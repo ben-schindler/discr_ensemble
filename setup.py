@@ -7,7 +7,7 @@ with open(path.join(this_directory, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name="discrensemble",
-    version=0.1,
+    version="0.1",
     description="Multi-adversarial Learning in PyTorch.",
     long_description=long_description,
     long_description_content_type='text/markdown',
